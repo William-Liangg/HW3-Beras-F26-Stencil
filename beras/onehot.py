@@ -4,6 +4,9 @@ from beras.core import Callable
 
 
 class OneHotEncoder(Callable):
+    def __init__(self):
+        self.encoding_dict = None
+
     """
     One-Hot Encodes labels. First takes in a candidate set to figure out what elements it
     needs to consider, and then one-hot encodes subsequent input datasets in the
@@ -33,6 +36,8 @@ class OneHotEncoder(Callable):
         }
 
     def forward(self, data):
+        if self.encoding_dict is None:
+            self.fit(data)
         list = [self.encoding_dict[label] for label in data]
         return np.array(list)
 

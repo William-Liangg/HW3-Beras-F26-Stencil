@@ -115,7 +115,6 @@ class Model(Diffable):
         NOTE: This method is almost identical to fit (think about how training and testing differ --
         the core logic should be the same)
         """
-        metrics = defaultdict(list)
         batch_metrics = defaultdict(list)
         n = len(x)
 
@@ -127,12 +126,15 @@ class Model(Diffable):
             for k, v in batch_res.items():
                 batch_metrics[k].append(v)
 
-        update_metric_dict(metrics, batch_metrics)
         print_stats(batch_metrics, avg=True)
+
+        metrics = {}
+        for k, v in batch_metrics.items():
+            metrics[k] = np.mean(v)
 
         predictions = self.forward(x)
         return metrics, predictions
-        
+            
     def get_input_gradients(self) -> list[Tensor]:
         return super().get_input_gradients()
 
