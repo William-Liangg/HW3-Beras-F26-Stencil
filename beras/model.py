@@ -57,7 +57,11 @@ class Model(Diffable):
         """
         Return the weights of the model by iterating through the layers
         """
-        return NotImplementedError
+        res = []
+        for layer in self.layers:
+            for w in layer.weights:
+                res.append(w)
+        return res
 
     def compile(self, optimizer: Diffable, loss_fn: Diffable, acc_fn: Callable):
         """
@@ -74,7 +78,32 @@ class Model(Diffable):
         Trains the model by iterating over the input dataset and feeding input batches
         into the batch_step method with training. At the end, the metrics are returned.
         """
-        return NotImplementedError
+        metrics = defaultdict(list)
+        n = len(x)
+        num_batches = int(np.ceil(n / batch_size))
+
+        for epoch in range(epochs):
+            epoch_metrics = defaultdict(list)
+
+            # shuffle
+            indices = np.random.permutation(n)
+            x_shuffled = x[indices]
+            y_shuffled = y[indices]
+
+            for batch_num in range(num_batches):
+                start = batch_num * batch_size
+                batched_x = x_shuffled[start : start + batch_size]
+                batched_y = y_shuffled[start : start + batch_size]
+
+                batch_res = self.batch_step(batched_x, batched_y, training=True)
+                for k, v in batch_res.items():
+                    epoch_metrics[k].append(v)
+                print_stats(batch_res, batch_num, num_batches, epoch)
+
+            update_metric_dict(metrics, epoch_metrics)
+            print_stats(epoch_metrics, epoch=epoch, avg=True)
+
+        return metrics
 
     def evaluate(self, x: Tensor, y: Union[Tensor, np.ndarray], batch_size: int):
         """
@@ -86,8 +115,24 @@ class Model(Diffable):
         NOTE: This method is almost identical to fit (think about how training and testing differ --
         the core logic should be the same)
         """
-        return NotImplementedError
+        metrics = defaultdict(list)
+        batch_metrics = defaultdict(list)
+        n = len(x)
 
+        for i in range(0, n, batch_size):
+            x_batch = x[i : i + batch_size]
+            y_batch = y[i : i + batch_size]
+
+            batch_res, _ = self.batch_step(x_batch, y_batch, training=False)
+            for k, v in batch_res.items():
+                batch_metrics[k].append(v)
+
+        update_metric_dict(metrics, batch_metrics)
+        print_stats(batch_metrics, avg=True)
+
+        predictions = self.forward(x)
+        return metrics, predictions
+        
     def get_input_gradients(self) -> list[Tensor]:
         return super().get_input_gradients()
 
@@ -108,7 +153,10 @@ class SequentialModel(Model):
         """Forward pass in sequential model. It's helpful to note that layers are initialized in beras.Model, and
         you can refer to them with self.layers. You can call a layer by doing var = layer(input).
         """
-        return NotImplementedError
+        out = inputs
+        for layer in self.layers:
+            out = layer(out)
+        return out
 
     def batch_step(self, x:Tensor, y: Tensor, training: bool =True) -> dict[str, float]:
         """Computes loss and accuracy for a batch. This step consists of both a forward and backward pass.
@@ -116,8 +164,15 @@ class SequentialModel(Model):
         will take place within the scope of Beras.GradientTape()"""
         ## TODO: Compute loss and accuracy for a batch. Return as a dictionary
         ## If training, then also update the gradients according to the optimizer
-    
+        with GradientTape() as gt:
+            preds = self.forward(x)
+            loss = self.compiled_loss(preds, y)
+
+        acc = self.compiled_acc(preds, y)
+
         if training:
-            return {"loss": ???, "acc": ???}
+            grads = gt.gradient(loss, self.weights)
+            self.optimizer.apply_gradients(self.weights, grads)
+            return {"loss": loss, "acc": acc}
         else:
-            return {"loss": ???, "acc": ???}, predictions
+            return {"loss": loss, "acc": acc}, preds
